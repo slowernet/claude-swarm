@@ -51,7 +51,7 @@ Judgment runs at the top tier, execution one down, retrieval below that:
 
 ## Agent teams
 
-The skill runs on either of Claude Code's spawn substrates: plain subagents, or teammates (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`). The rule that makes it substrate-proof: no report rides on an agent's final text, because a teammate's final text is never delivered. Durable output goes in the store; summaries go by SendMessage before the agent finishes.
+The skill runs on either of Claude Code's spawn substrates: plain subagents, or teammates ([agent teams](https://code.claude.com/docs/en/agent-teams), enabled with `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`). The rule that makes it substrate-proof: no report rides on an agent's final text, because a teammate's final text is never delivered. Durable output goes in the store; summaries go by SendMessage before the agent finishes.
 
 ## Files
 
