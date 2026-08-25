@@ -29,6 +29,7 @@ Rules:
 - `evidence` is file paths (with line numbers when they matter), never prose.
 - `kind: fact` is only for what verifiably exists in the repo. Beliefs about implications are `interpretation`. Keeping these separate is what lets a reviewer attack one without the other.
 - One conclusion per entry. Two findings are two files.
+- **Absence is a conclusion.** An entry saying a thing does not exist, listing where you looked, is worth as much as one saying it does — and saves the next agent the same fruitless search. Its `evidence` is the places checked.
 - Do not paste code blocks longer than ~5 lines; cite the path instead.
 
 ## Scout prompt
@@ -51,6 +52,9 @@ Constraints:
   using the entry format in {skill-path}/references/templates.md.
 - Record every durable conclusion as an entry, with evidence paths.
   Mark confidence honestly; a wrong `high` poisons every agent after you.
+- If the answer is that the thing does NOT exist, that is your finding —
+  write it, listing where you looked as the evidence. A negative answer
+  is an answer. Never finish with no entry because you "found nothing".
 - If you find something important OUTSIDE your question, write it as a
   brief entry (kind: question if unresolved) rather than investigating it.
 

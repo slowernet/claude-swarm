@@ -71,7 +71,11 @@ The store is scratch, scoped to the task. Suggest adding `.claude/swarm/` to `.g
 
 ### 1. Plan (lead, in-session)
 
-Do not spawn anything yet. Work out, in your own reasoning:
+Do not spawn anything yet.
+
+**First, justify the swarm in one sentence, out loud, before anything else:** name the two or more agents that would otherwise explore the same ground. If you cannot name them, say so and do the task directly — you have already decided to use this skill, which is exactly why the decision needs saying rather than assuming. "This is a three-file change to code I have already read" is a complete and correct answer, and ends the swarm here.
+
+Then work out, in your own reasoning:
 
 - What the actual problem is, restated in one paragraph in `plan.md`.
 - What must be known before implementation, as a numbered list of questions. Mark each: answerable from what you already know (answer it now, write the entry yourself) or needs a scout.
@@ -91,10 +95,18 @@ Cap concurrent writing workers at 4 regardless of task size. Beyond that, coordi
 
 ### 2. Scout
 
-Spawn scouts in one message so they run in parallel. Each scout gets: a name (`scout-1`, `scout-2`, ...), **one narrowly-scoped question**, the store path, and the prompt template from `references/templates.md`. Scouts:
+**Write the questions before you write the roster.** Scout quality decides everything downstream, and a vague question is the most common way a swarm wastes tokens. The shape test: *a question is well-formed if its answer fits in one entry with concrete evidence paths.*
+
+- ✗ "Understand the auth system" — produces a wandering scout and four half-entries.
+- ✓ "Which module enforces auth on API routes, and where is it mounted?" — one entry, two evidence paths.
+
+If a question fails the test, split it or narrow it. One question per scout; a scout holding two questions will do the easy one well and the other badly.
+
+Spawn scouts in one message so they run in parallel. Each scout gets: a name (`scout-1`, `scout-2`, ...), its question, the store path, and the prompt template from `references/templates.md`. Scouts:
 
 - Run the index command first; do not re-answer an existing entry.
 - Investigate only their question. A scout that wanders the repo is a defect.
+- **Record absence as a finding.** "No rate limiting exists — checked `middleware/`, `router.ts`, `package.json`" is one of the highest-value entries possible: looking for something that is not there is the most wasteful search to repeat, and agents systematically fail to report it. A negative answer is an answer, not a failed scout.
 - Write their own entries (the discoverer records the finding — transcription through the lead loses evidence and pays twice).
 - Report entry IDs plus a summary of three lines or fewer — by SendMessage, before finishing, per the substrate rule above.
 - Never implement anything.
@@ -145,6 +157,13 @@ One reviewer (two for large or risky changes, each with a distinct lens — corr
 
 The lead decides what goes back to workers. Before declaring the task done, verify with a fresh test run in-session — evidence before claims, always.
 
+**Bounded spend.** Two counters, both the lead's to keep, both surfaced to the user rather than absorbed silently:
+
+- **Two respawns per task.** A worker that dies or returns nothing gets respawned twice. On the third failure, stop and report the task with what the store holds — a task failing repeatedly is usually a partition or plan problem, and a fourth identical spawn will not find that out.
+- **Two review round trips.** Findings go back to workers at most twice. On a third round, stop and hand the remaining findings to the user as a list.
+
+The reason is not tidiness. Without a cap, a task where the reviewer keeps finding real problems and workers keep half-fixing them consumes the whole budget on one item, and the hardest item is exactly the one least likely to converge. When either counter runs out, the store and the task list hold everything learned — the work is paused, not lost.
+
 ## Failure handling summary
 
 | Event | Response |
@@ -153,7 +172,8 @@ The lead decides what goes back to workers. Before declaring the task done, veri
 | Low-confidence finding on the critical path | Targeted follow-up to the owning scout before workers build on it |
 | Worker discovers the plan is wrong | Entry + message to lead + stop; lead re-plans, updates tasks |
 | Two workers need the same file | Re-partition: merge tasks or sequence them; worktree only as last resort |
-| Agent timeout / death / null return | Respawn with same task ID; store and tasks carry all state |
+| Agent timeout / death / null return | Respawn with same task ID; store and tasks carry all state. **Two respawns per task**, then stop and report |
+| Review keeps returning findings | **Two round trips**, then stop and hand the remaining findings to the user |
 | Session resumed, agents gone | `/resume` does not restore teammates; the store and task list persist on disk — respawn from them |
 | Tests disprove an architectural assumption | The failing test is evidence; entry goes `contradicted`, gate re-runs |
 | Merge conflicts (worktree path) | Integrator owns the merge |
