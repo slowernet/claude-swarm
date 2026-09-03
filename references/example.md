@@ -28,7 +28,7 @@ Tasks with dependencies:
 - T3 wire middleware into request path, integration tests — blockedBy: T1, T2
 - T4 docs — folded into T3, since a reviewer would never approve one and reject the other
 
-File partition: T1 `src/middleware/ratelimit.ts` + its test; T2 `src/models/apikey.ts` + migration dir; T3 `src/app.ts` + integration tests. Disjoint → T1 and T2 parallel, T3 sequential after both. Sizing row: multi-file feature, unfamiliar repo → 4 scouts, 3 workers, 1 integrator, 1 reviewer.
+File partition: T1 `src/middleware/ratelimit.ts` + its test; T2 `src/models/apikey.ts` + migration dir; T3 `src/app.ts` + integration tests. Disjoint → T1 and T2 parallel, T3 sequential after both. Sizing row: cross-subsystem, or unfamiliar repo → 4 scouts, 1 plan reviewer, 3 workers, 1 code reviewer.
 
 ## Scouts
 
@@ -74,30 +74,31 @@ worker-1 (T1) and worker-2 (T2) spawn in parallel, each with: task ID, the 3-4 e
 
 worker-2 discovers mid-task that the migration runner requires a model version bump (`worker-2-1`, fact) — written to the store, not just mentioned in its report. worker-3 (T3), spawning later, reads it from the index and avoids the same trap.
 
-Reports come back as `DONE` with pasted test output. The lead checks `git diff --stat` against each worker's claimed file list before releasing T3 — a claim is not evidence.
+Reports come back as `DONE` with pasted test output. The lead checks `git add -N . && git diff --stat <base ref>` against each worker's claimed file list before releasing T3 — a claim is not evidence, and without the intent-to-add T1's new middleware file would not appear at all.
 
 worker-3 wires the middleware, writes integration tests asserting the 429 shape against `lead-1` and `scout-1-2`, updates the docs, and reports `DONE_WITH_CONCERNS`: the `Retry-After` value rounds up, which the spec does not address. The lead reads it, judges it correct, and lets it stand.
 
-With the last worker in, the lead captures the diff once — `git diff <base ref> > .claude/swarm/rate-limit/diff.txt` — and hands that path onward. It never reads the diff itself.
+With the last worker in, the lead runs `npm test` in-session and reads the green output, then captures the diff once — `git add -N . && git diff <base ref> > .claude/swarm/rate-limit/diff.txt` — and hands that path onward. It never reads the diff itself.
 
-## Integrate
+## Merge
 
-The integrator gets the diff path, the index, and the coverage list. It finds one seam: worker-1 named the redis keyspace `rl:` while worker-3's test asserted `ratelimit:` — fixes the test to match the implementation, cites `lead-1`. Runs the full suite; green; reports `DONE` with actual output.
+The partition held, so no worker needed a worktree and all three wrote into the shared tree. Nothing to merge, so no integrator spawns; the seams between workers fall to the reviewer's conventions and simplicity lenses below.
 
 ## Review
 
-One reviewer, correctness lens, report-only, given the diff file, the spec, the coverage list, and the index. Three findings:
+One reviewer, correctness lens, report-only, given the diff file, the spec, the coverage list, and the index. Four findings:
 
 - high: the limiter counts requests before auth *failures* are rejected, so invalid keys consume a valid key's budget when key IDs collide on prefix — file:line, repro described
+- medium, conventions: worker-1 keyed the redis entries on `rl:` while worker-3's integration test asserts `ratelimit:`. Two workers who could not see each other named one thing twice; the test is the one that is wrong
 - medium, test quality: the `Retry-After` test asserts the header is present but never its value. No production change to the value would fail it
 - CANNOT VERIFY: whether existing keys are actually backfilled to `legacy` — the migration runs against a database the diff does not show
 
 It cannot disprove any entry; the store stands. Verdict: RETURN-TO-WORKERS with the high finding.
 
-The lead messages worker-1 (warm, has the middleware loaded) with both findings; it fixes the ordering and strengthens the test. The CANNOT VERIFY item is the lead's: it runs the migration against a scratch database, confirms the backfill, and records it. Then it runs the full suite in-session, reads the output, and only then says the work is done.
+The lead routes each finding to the worker that owns the file. worker-1 (warm, has the middleware loaded) gets the high finding and the test-quality one; it fixes the ordering and strengthens the test. worker-3 (warm, owns the integration test) gets the keyspace finding and changes its assertion to `rl:`, citing `lead-1`. The CANNOT VERIFY item is the lead's: it runs the migration against a scratch database, confirms the backfill, and records it. Then it runs the full suite in-session, reads the output, and only then says the work is done.
 
 ## The token ledger
 
-Paid once instead of N times: the router/auth topology (scout-1, reused by workers 1 and 3 and the integrator), the redis discovery, the migration-runner trap (worker-2's find, worker-3's savings), the error-shape contract, and the conventions — written once by scout-4, verified rather than recopied, and used by three workers and the reviewer without any of them deriving it. Follow-ups went to warm contexts twice instead of fresh spawns. The diff was read from a file by two agents and never by the lead. The reviewer read a diff path plus a 105-token index, not three worker transcripts.
+Paid once instead of N times: the router/auth topology (scout-1, reused by workers 1 and 3), the redis discovery, the migration-runner trap (worker-2's find, worker-3's savings), the error-shape contract, and the conventions — written once by scout-4, verified rather than recopied, and used by three workers and the reviewer without any of them deriving it. Follow-ups went to warm contexts twice instead of fresh spawns. The diff was read from a file by the reviewer and never by the lead. The reviewer read a diff path plus a 105-token index, not three worker transcripts.
 
 Paid once and saved more: the plan reviewer, one agent at the gate, which removed an abstraction before three files depended on it and caught a gap that would have stopped a worker mid-task.

@@ -6,7 +6,8 @@ This repo is a Claude Code skill, so the "code" is prose that gets loaded into a
 
 - `SKILL.md` is the lead's playbook. It is read by the orchestrating session, never by spawned agents.
 - `references/templates.md` holds the prompt templates spawned agents actually receive. The constraint lines in them are contracts, not suggestions — instantiators are told to fill the bracketed slots and change nothing else.
-- `references/example.md` is illustrative and must stay consistent with the other two when they change.
+- `references/entry.md` is the entry format every writing agent loads, which makes it the most token-sensitive file in the repo.
+- `references/example.md` is illustrative and must stay consistent with the others when they change.
 
 ## Rules that must not be weakened
 
