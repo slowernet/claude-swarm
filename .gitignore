@@ -1,6 +1,3 @@
-# Per-task scratch store the skill writes during a run
-.claude/swarm/
-# Local, machine-specific Claude Code settings
-.claude/settings.local.json
-# Scratch, never committed
 tmp/
+.claude/swarm/
+.claude/settings.local.json
