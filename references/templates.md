@@ -2,59 +2,7 @@
 
 Copy these, fill the bracketed slots, keep everything else. The constraint lines are the contract; do not soften them when instantiating.
 
-## Entry file
-
-Path: `.claude/swarm/<slug>/entries/<agent>-<n>.md` — the writing agent numbers its own entries from 1.
-
-```markdown
----
-id: scout-2-1
-kind: fact            # fact | interpretation | decision | question
-status: provisional   # provisional | verified | contradicted | obsolete
-confidence: high      # high | medium | low
-summary: API auth is enforced once, in AuthMiddleware, before routing
-by: scout-2
-evidence: src/middleware/auth.ts:41, src/router.ts:12
----
-
-One short paragraph: the conclusion and what it rests on. State what was
-checked, not just what was concluded — "grepped all 3 route registrars,
-each mounts AuthMiddleware first" beats "auth seems centralized".
-If this entry contradicts or supersedes another, name it by id.
-```
-
-Rules:
-
-- `summary` must stand alone — it is what the index shows, and most readers never open the body.
-- `evidence` is file paths (with line numbers when they matter), never prose.
-- `kind: fact` is only for what verifiably exists in the repo. Beliefs about implications are `interpretation`. Keeping these separate is what lets a reviewer attack one without the other.
-- One conclusion per entry. Two findings are two files.
-- **Absence is a conclusion.** An entry saying a thing does not exist, listing where you looked, is worth as much as one saying it does — and saves the next agent the same fruitless search. Its `evidence` is the places checked.
-- Do not paste code blocks longer than ~5 lines; cite the path instead.
-
-### The conventions entry
-
-The one entry every worker cites. Written by the conventions scout and verified at the gate — the lead flips its status rather than copying it into a new entry. `kind: fact`. It is the exception to the code-block rule: it must show real examples, because a worker cannot follow a rule it has to go and reconstruct.
-
-```markdown
----
-id: scout-4-1
-kind: fact
-status: verified
-confidence: high
-summary: Repo conventions — error idiom, test naming, test command
-by: scout-4
-evidence: lib/mill/runner.rb:88, test/mill/test_runner.rb:1, Rakefile:12
----
-
-Errors: `rescue StandardError => e; log_error(e); raise` — never a bare rescue,
-never swallowed. Tests: mirror the source path, `lib/mill/foo.rb` →
-`test/mill/test_foo.rb`, one class per file. Run: `bundle exec rake test`;
-passing output ends `N runs, N assertions, 0 failures, 0 errors, 0 skips`.
-Hash keys are symbols throughout.
-```
-
-Not "follow existing patterns" — that is an instruction to go and find one, which every worker follows separately and differently.
+Entry format: `references/entry.md`.
 
 ## Report contract
 
@@ -67,7 +15,7 @@ Every agent sends its report by SendMessage to the lead **before finishing**, be
 | `NEEDS_CONTEXT` | Missing information the prompt should have carried | Supply it by SendMessage — the agent is warm. Do not respawn |
 | `BLOCKED` | Cannot proceed: scope collision, wrong plan, a suite it cannot fix | Re-partition or re-plan. Never respawn unchanged |
 
-`DONE` requires the test command and its actual output. A completion claim without them is not `DONE`.
+`DONE` requires the test command and its actual output. A completion claim without them is not `DONE`. A gated worker's first message is its plan, not a report: it carries no status, and the lead's reply resumes the worker.
 
 ## Scout prompt
 
@@ -86,7 +34,7 @@ Constraints:
 - Answer ONLY your question. Do not survey the repo. Do not implement anything.
 - The repo is read-only to you. You may write files ONLY under
   .claude/swarm/{slug}/entries/, named {name}-1.md, {name}-2.md, ...
-  using the entry format in {skill-path}/references/templates.md.
+  using the entry format in {skill-path}/references/entry.md.
 - Record every durable conclusion as an entry, with evidence paths.
   Mark confidence honestly; a wrong `high` poisons every agent after you.
 - If the answer is that the thing does NOT exist, that is your finding —
@@ -155,6 +103,7 @@ Your file scope: {files}.
 Read these entries first: {entry ids with paths}.
 Conventions binding on you: {conventions entry id}.
 Decisions binding on you: {decision entry ids}. Do not re-litigate them.
+Gate: {none | message your plan and stop until the lead replies}.
 
 Knowledge store: .claude/swarm/{slug}/entries/
 Before exploring ANYTHING, run:
@@ -163,14 +112,18 @@ and read what is relevant. Explore the repo only for gaps the store does
 not cover. Ignore entries with status: contradicted or obsolete.
 
 Constraints:
+- If your gate line says to wait: before you write anything, SendMessage
+  your plan to the lead and finish your turn with no STATUS line. The
+  lead's reply resumes you; write only after it arrives.
 - Stay inside your file scope. If the task genuinely requires a file
   outside it, STOP: write a question entry, message the lead, and report
   BLOCKED. Do not widen your own scope.
 - Follow the conventions entry. Do not derive conventions from neighbouring
   files, and do not substitute your own. If the entry is wrong or silent on
   something you need, that is a finding — write it and say so in your report.
-- Write entries (named {name}-1.md, ...) for durable discoveries: repo
-  facts the store lacked, or surprises that threaten the plan.
+- Write entries (named {name}-1.md, ...), using the entry format in
+  {skill-path}/references/entry.md, for durable discoveries: repo facts
+  the store lacked, or surprises that threaten the plan.
 - Test-first, and watch each test fail before you make it pass:
     1. Write ONE failing test for one behaviour. Real code, not mocks.
        Before you write its body, name the production change that would
@@ -207,28 +160,38 @@ order:
 
 ## Integrator prompt
 
+Spawned only when a worker ran in an isolated worktree, so there is a real merge to do. No worktree, no integrator.
+
 ```
 You are the integrator for a swarm that worked on: {one-line task statement}.
+A worker ran in an isolated worktree, so the merge is yours.
 
 Workers and their tasks: {list}.
 Read the store index first:
   rg --no-heading '^(kind|status|confidence|summary):' .claude/swarm/{slug}/entries/
 
 Your job, in order:
-1. Read the diff at {diff file path}. Check it against the original task and
-   the spec coverage list in .claude/swarm/{slug}/plan.md: is anything
-   missing, anything extra?
-2. Cross-worker consistency: naming drift, two helpers doing one job,
-   patterns that diverge between independently-built pieces. Check each
+1. Apply the worktree's changes onto the shared tree. Nothing commits
+   during a swarm, so the work sits uncommitted in the worktree whose path
+   plan.md records:
+     git -C <worktree path> add -N . && git -C <worktree path> diff | git apply -3
+   Resolve every conflict in favour of the decision entries.
+2. Check `git diff <base ref>` (base ref from plan.md) against the original
+   task and the spec coverage list in .claude/swarm/{slug}/plan.md: is
+   anything missing, anything extra?
+3. Fix the seams the merge introduced: naming drift, two helpers doing one
+   job, patterns that diverge between independently-built pieces. Check each
    against the conventions entry ({id}), which is what they all agreed to.
    Fix seams; do not add features.
-3. {If worktrees were used: merge them, resolving conflicts in favor of
-   the decision entries.}
-4. Run the full test suite: {command}. Report actual output.
+4. Recapture the diff, after the seam fixes so the reviewer reads the tree
+   as it stands:
+     git add -N . && git diff <base ref> > {diff file path}
+5. Run the full test suite: {command}. Report actual output.
 
 You do not redo scouting. If the diff gives you concrete evidence an
-entry is wrong, write a contradicting entry with the evidence and flag
-it in your report — do not silently work around it.
+entry is wrong, write a contradicting entry with the evidence, using the
+entry format in {skill-path}/references/entry.md, and flag it in your
+report — do not silently work around it.
 
 Report: BEFORE you finish, SendMessage to the lead ("main"; its name if
 that is rejected) — your final text may never be delivered. Send:
@@ -274,9 +237,10 @@ Then these four, which it does not carry:
    been run for real.
 
 The store is evidence, not scripture. If you can disprove an entry, do:
-write a contradicting entry ({name}-1.md, ...) with evidence, and flip
-the disproven entry's status line to contradicted. That pair of writes
-is the ONE edit you are licensed to make outside your report.
+write a contradicting entry ({name}-1.md, ...) with evidence, using the
+entry format in {skill-path}/references/entry.md, and flip the disproven
+entry's status line to contradicted. That pair of writes is the ONE edit
+you are licensed to make outside your report.
 
 For each finding: file:line, severity (critical / high / medium / low),
 what breaks and when, and the smallest fix — in one or two sentences.

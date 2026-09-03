@@ -1,0 +1,4 @@
+# Per-task scratch store the skill writes during a run
+.claude/swarm/
+# Local, machine-specific Claude Code settings
+.claude/settings.local.json
