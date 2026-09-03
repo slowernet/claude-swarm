@@ -2,3 +2,5 @@
 .claude/swarm/
 # Local, machine-specific Claude Code settings
 .claude/settings.local.json
+# Scratch, never committed
+tmp/
